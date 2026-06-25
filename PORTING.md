@@ -119,8 +119,11 @@ instancing. Rebuild the instance buffer each frame (map/discard).
 
 ## 5. Rendering
 
-- **Camera** (right-handed; D3D uses [0,1] depth like Metal): eye `(0,3,48)`,
+- **Camera** (right-handed; D3D uses [0,1] depth like Metal): eye `(0,0,48)`,
   center `(0,0,-8)`, up `(0,1,0)`, fovy `46°`, near `1`, far `240`. Aspect = viewport.
+  Eye and centre share Y → a **level** view (no downward pitch / "top tilt"); depth comes
+  from the Z spread of the rain, not a camera tilt. (Panning, when enabled, drifts between
+  the `PanController` presets in `Renderer.swift`, some of which raise/offset the eye.)
 - **Billboards**: each instance is a camera-facing quad. In the vertex shader build the
   quad from the camera **right** and **up** vectors: `world = pos + right*corner.x*glyphHalf + up*corner.y*glyphHalf`, `glyphHalf = 0.70`.
 - **Glyph atlas UV**: atlas is `cols=16` × `rows` cells; `col = cell % cols`,

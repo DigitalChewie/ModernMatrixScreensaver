@@ -6,8 +6,8 @@ from one shared C engine.
 
 ![Modern Matrix](docs/hero.png)
 
-It's a from-scratch recreation of XScreenSaver's **GLMatrix** — still the best-looking 3D
-Matrix saver, but one that only exists as an x86-64 binary. Under Rosetta inside Apple's
+It's a from-scratch recreation of XScreenSaver's **GLMatrix**, which only exists as an
+x86-64 binary. Under Rosetta inside Apple's
 screensaver host on a multi-display Apple-Silicon Mac, that original produces the "boxed
 across two screens" rendering, runaway memory, and general flakiness. Modern Matrix is fully
 native on both platforms, leak-free, and adds bloom, HDR, high-refresh rendering, and crisp

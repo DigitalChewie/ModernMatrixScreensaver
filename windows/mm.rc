@@ -46,7 +46,7 @@ BEGIN
     CONTROL         "", IDC_GLOW, "msctls_trackbar32", TBS_HORZ | WS_TABSTOP, 38, 298, 208, 18
     RTEXT           "Intense", IDC_STATIC, 250, 301, 40, 9
 
-    CONTROL         "<a href=""https://github.com/Pottypotsworth/ModernMatrixScreensaver"">Project on GitHub</a>",
+    CONTROL         "<a href=""https://github.com/DigitalChewie/ModernMatrixScreensaver"">Project on GitHub</a>",
                     IDC_LINK, "SysLink", WS_TABSTOP, 10, 322, 160, 10
 
     PUSHBUTTON      "Reset to Defaults", IDC_RESET, 10, 338, 90, 14

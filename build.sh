@@ -26,6 +26,12 @@ APP="$BUILD/Modern Matrix.app"
 SAVER="$BUILD/Modern Matrix.saver"
 METALLIB="$BUILD/default.metallib"
 
+# Code-signing: "-" = ad-hoc (fine for local dev/install). The `dist` target overrides
+# SIGN_ID with the "Developer ID Application" identity for a notarizable, hardened-runtime,
+# timestamped signature; NOTARY_PROFILE is the keychain profile saved by notarytool.
+SIGN_ID="${SIGN_ID:--}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-ModernMatrixNotary}"
+
 CORE_SOURCES=( "$ROOT"/Sources/Core/*.swift )
 
 # Shared C engine (mmcore) — compiled with clang, bridged into Swift via the header
@@ -47,6 +53,31 @@ fi
 SWIFTC=( swiftc -sdk "$SDK" -target "$DEPLOY_TARGET" -swift-version 5 "${SWIFT_OPT[@]}" )
 
 log() { printf '\033[1;32m▸ %s\033[0m\n' "$*"; }
+
+# Sign a bundle. Ad-hoc by default; with a Developer ID identity (the `dist` target) it adds
+# the hardened runtime + a secure timestamp, which notarization requires.
+sign_bundle() {
+  local bundle="$1"
+  if [[ "$SIGN_ID" == "-" ]]; then
+    codesign --force --sign - "$bundle" >/dev/null 2>&1 || true
+  else
+    log "Signing $(basename "$bundle") → $SIGN_ID"
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$bundle"
+  fi
+}
+
+# Submit a bundle to Apple's notary service, wait for the result, then staple the ticket
+# into the bundle so Gatekeeper clears it even offline.
+notarize_and_staple() {
+  local bundle="$1"
+  local zip="$BUILD/$(basename "$bundle").notarize.zip"
+  rm -f "$zip"
+  ditto -c -k --keepParent "$bundle" "$zip"
+  log "Notarizing $(basename "$bundle") (profile: $NOTARY_PROFILE) — can take a few minutes…"
+  xcrun notarytool submit "$zip" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$bundle"
+  rm -f "$zip"
+}
 
 compile_metal() {
   log "Compiling Metal shaders → default.metallib"
@@ -87,7 +118,7 @@ build_harness() {
   rm -rf "$APP/Contents/MacOS/MatrixRainHarness.dSYM"
   cp "$ROOT/Sources/Harness/Info.plist" "$APP/Contents/Info.plist"
   cp "$METALLIB" "$APP/Contents/Resources/default.metallib"
-  codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+  sign_bundle "$APP"
   log "App ready: $APP"
 }
 
@@ -114,7 +145,7 @@ build_saver() {
   # Picker thumbnail (the wallpaper agent shows this in the grid; same convention as Apple savers).
   cp "$ROOT/Sources/Saver/thumbnail.png" "$SAVER/Contents/Resources/thumbnail.png"
   cp "$ROOT/Sources/Saver/thumbnail@2x.png" "$SAVER/Contents/Resources/thumbnail@2x.png"
-  codesign --force --sign - "$SAVER" >/dev/null 2>&1 || true
+  sign_bundle "$SAVER"
   log "Mach-O type: $(otool -hv "$SAVER/Contents/MacOS/MatrixRain" | awk 'NR==4{print $5}')"
   log "Screensaver ready: $SAVER"
 }
@@ -142,6 +173,29 @@ case "${1:-all}" in
               cp -R "$APP" "$HOME/Applications/"
               log "Installed app → $HOME/Applications/$(basename "$APP")"
             fi
+            ;;
+  dist)
+            # Release-build, Developer ID sign + hardened runtime, notarize, staple, and
+            # zip both bundles for distribution. Requires the Developer ID Application cert
+            # and a stored notarytool keychain profile ($NOTARY_PROFILE).
+            DEVID="${DEVELOPER_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application[^"]*\)".*/\1/p' | head -1)}"
+            [[ -n "$DEVID" ]] || { echo "ERROR: no 'Developer ID Application' certificate in the keychain." >&2; exit 1; }
+            log "Distribution identity: $DEVID"
+            SIGN_ID="$DEVID" CONFIG=release build_saver
+            SIGN_ID="$DEVID" CONFIG=release build_harness
+            notarize_and_staple "$SAVER"
+            notarize_and_staple "$APP"
+            log "Verifying signature + stapled ticket…"
+            for b in "$SAVER" "$APP"; do
+              codesign --verify --strict --verbose=2 "$b" 2>&1 | sed "s|^|  [$(basename "$b")] |" || true
+              xcrun stapler validate "$b" 2>&1 | sed "s|^|  [$(basename "$b")] |" || true
+            done
+            rm -rf "$BUILD/dist"; mkdir -p "$BUILD/dist/Modern Matrix"
+            ditto "$SAVER" "$BUILD/dist/Modern Matrix/$(basename "$SAVER")"
+            ditto "$APP"   "$BUILD/dist/Modern Matrix/$(basename "$APP")"
+            rm -f "$BUILD/ModernMatrix-macOS.zip"
+            ditto -c -k --keepParent "$BUILD/dist/Modern Matrix" "$BUILD/ModernMatrix-macOS.zip"
+            log "Distributable → $BUILD/ModernMatrix-macOS.zip"
             ;;
   clean)    rm -rf "$BUILD"; log "Cleaned." ;;
   all|*)    build_harness; build_saver ;;

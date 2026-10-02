@@ -179,8 +179,11 @@ case "${1:-all}" in
             # staple, and zip it for distribution (saver-only — the companion app is a dev
             # tool; end users configure in place via the Options sheet). Requires the
             # Developer ID Application cert + a stored notarytool keychain profile.
-            DEVID="${DEVELOPER_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application[^"]*\)".*/\1/p' | head -1)}"
-            [[ -n "$DEVID" ]] || { echo "ERROR: no 'Developer ID Application' certificate in the keychain." >&2; exit 1; }
+            # Selected by SHA-1, not name: the G1 and G2 certs share the same name.
+            # Default is the G2 cert (valid to 2031-09-17); override with DEVELOPER_ID.
+            DEVID="${DEVELOPER_ID:-1206F5DA1CE7E7B9FC84F1DA70E0963097156165}"
+            security find-identity -v -p codesigning | grep -q "$DEVID" \
+              || { echo "ERROR: signing identity $DEVID not found in the keychain." >&2; exit 1; }
             log "Distribution identity: $DEVID"
             SIGN_ID="$DEVID" CONFIG=release build_saver
             notarize_and_staple "$SAVER"
